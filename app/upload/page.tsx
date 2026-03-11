@@ -8,11 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { 
-  Upload, 
-  Image as ImageIcon, 
+import {
+  Upload,
+  Image as ImageIcon,
   FileVideo,
-  X, 
+  X,
   CheckCircle2,
   Loader2,
   Sparkles,
@@ -29,6 +29,7 @@ interface UploadedFile {
   type: "image" | "video"
   status: "uploading" | "processing" | "complete" | "error"
   progress: number
+  fileObj?: File
 }
 
 const analysisTypes = [
@@ -75,7 +76,7 @@ export default function UploadPage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-    
+
     const droppedFiles = Array.from(e.dataTransfer.files)
     processFiles(droppedFiles)
   }, [])
@@ -94,7 +95,8 @@ export default function UploadPage() {
       size: formatFileSize(file.size),
       type: file.type.startsWith('video/') ? 'video' : 'image',
       status: 'uploading',
-      progress: 0
+      progress: 0,
+      fileObj: file
     }))
 
     setFiles(prev => [...prev, ...newFiles])
@@ -112,18 +114,18 @@ export default function UploadPage() {
       if (progress >= 100) {
         progress = 100
         clearInterval(interval)
-        setFiles(prev => prev.map(f => 
+        setFiles(prev => prev.map(f =>
           f.id === fileId ? { ...f, status: 'processing', progress: 100 } : f
         ))
-        
+
         // Simulate processing
         setTimeout(() => {
-          setFiles(prev => prev.map(f => 
+          setFiles(prev => prev.map(f =>
             f.id === fileId ? { ...f, status: 'complete' } : f
           ))
         }, 1500)
       } else {
-        setFiles(prev => prev.map(f => 
+        setFiles(prev => prev.map(f =>
           f.id === fileId ? { ...f, progress } : f
         ))
       }
@@ -140,252 +142,309 @@ export default function UploadPage() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
-  const handleStartAnalysis = () => {
+  const handleStartAnalysis = async () => {
+    if (files.length === 0) return
     setIsAnalyzing(true)
-    setTimeout(() => {
-      router.push('/dashboard')
-    }, 2000)
+    
+    try {
+      const formData = new FormData();
+      files.forEach(f => {
+        if (f.fileObj) {
+          formData.append("files", f.fileObj);
+        }
+      });
+
+      // Actual API call
+      const response = await fetch("http://127.0.0.1:8000/api/batch-analysis", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Analysis failed");
+      }
+
+      await response.json();
+      
+      // Success delay for "Wow" factor
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 1000)
+    } catch (error) {
+      console.error("Error during analysis:", error);
+      setIsAnalyzing(false);
+      // Fallback for demo if backend is still being finicky, but we want real integration
+    }
   }
 
   const allFilesComplete = files.length > 0 && files.every(f => f.status === 'complete')
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background selection:bg-primary/30">
       <Navigation />
 
-      <main className="pt-24 pb-12 px-6">
-        <div className="container mx-auto max-w-4xl">
+      <main className="pt-32 pb-20 px-6 relative overflow-hidden">
+        {/* Background decorations */}
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] -z-10" />
+        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-accent/5 rounded-full blur-[100px] -z-10" />
+
+        <div className="container mx-auto max-w-5xl">
           {/* Header */}
-          <div className="flex items-center gap-4 mb-8">
-            <FloatingDrone size="md" />
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Upload Drone Footage</h1>
-              <p className="text-muted-foreground">Upload thermal or visual images for AI-powered analysis</p>
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 animate-in fade-in slide-in-from-top-4 duration-700">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-lg shadow-primary/5">
+                <FloatingDrone size="md" />
+              </div>
+              <div>
+                <h1 className="text-4xl font-black tracking-tight text-foreground">Data Ingestion</h1>
+                <p className="text-muted-foreground text-lg italic">Upload multi-spectral payload for AI-driven synthesis</p>
+              </div>
+            </div>
+            <div className="hidden md:block">
+              <Badge variant="outline" className="px-4 py-1.5 rounded-full border-primary/20 bg-primary/5 text-primary text-sm font-semibold">
+                Priority Processing Active
+              </Badge>
             </div>
           </div>
 
-          <div className="grid gap-6">
-            {/* Upload Area */}
-            <Card className="bg-card border-border">
-              <CardContent className="p-6">
-                <div
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  className={`
-                    relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300
-                    ${isDragging 
-                      ? 'border-primary bg-primary/5 scale-[1.02]' 
-                      : 'border-border hover:border-primary/50 hover:bg-secondary/30'
-                    }
-                  `}
-                >
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,video/*"
-                    onChange={handleFileInput}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  
-                  <div className="space-y-4">
-                    <div className={`
-                      w-20 h-20 mx-auto rounded-2xl flex items-center justify-center transition-all
-                      ${isDragging ? 'bg-primary/20 scale-110' : 'bg-secondary'}
-                    `}>
-                      <Upload className={`w-10 h-10 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                    </div>
-                    
-                    <div>
-                      <p className="text-lg font-medium text-foreground">
-                        {isDragging ? 'Drop files here' : 'Drag and drop files here'}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        or click to browse your computer
-                      </p>
-                    </div>
-                    
-                    <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <ImageIcon className="w-4 h-4" />
-                        <span>JPG, PNG, TIFF</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <FileVideo className="w-4 h-4" />
-                        <span>MP4, MOV</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="grid lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+              {/* Upload Area */}
+              <Card className="glass-card border-white/5 overflow-hidden animate-in fade-in slide-in-from-left-6 duration-700 delay-100">
+                <CardContent className="p-8">
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`
+                      relative border-2 border-dashed rounded-[32px] p-16 text-center transition-all duration-500
+                      ${isDragging
+                        ? 'border-primary bg-primary/10 scale-[1.01]'
+                        : 'border-white/10 hover:border-primary/40 hover:bg-white/5'
+                      }
+                    `}
+                  >
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*"
+                      onChange={handleFileInput}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                    />
 
-            {/* Uploaded Files */}
-            {files.length > 0 && (
-              <Card className="bg-card border-border">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center justify-between">
-                    <span>Uploaded Files</span>
-                    <Badge variant="outline">{files.length} files</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {files.map((file) => (
-                      <div 
-                        key={file.id} 
-                        className="flex items-center gap-4 p-4 rounded-lg bg-secondary/50"
-                      >
-                        <div className={`
-                          w-10 h-10 rounded-lg flex items-center justify-center
-                          ${file.type === 'video' ? 'bg-chart-2/20' : 'bg-chart-1/20'}
-                        `}>
-                          {file.type === 'video' 
-                            ? <FileVideo className="w-5 h-5 text-chart-2" />
-                            : <ImageIcon className="w-5 h-5 text-chart-1" />
-                          }
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="font-medium text-sm text-foreground truncate">{file.name}</p>
-                            <span className="text-xs text-muted-foreground ml-2">{file.size}</span>
-                          </div>
-                          
-                          {file.status === 'uploading' && (
-                            <div className="space-y-1">
-                              <Progress value={file.progress} className="h-1" />
-                              <p className="text-xs text-muted-foreground">Uploading... {Math.round(file.progress)}%</p>
-                            </div>
-                          )}
-                          
-                          {file.status === 'processing' && (
-                            <div className="flex items-center gap-2 text-xs text-chart-2">
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              <span>Processing...</span>
-                            </div>
-                          )}
-                          
-                          {file.status === 'complete' && (
-                            <div className="flex items-center gap-2 text-xs text-chart-1">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span>Ready for analysis</span>
-                            </div>
-                          )}
-                        </div>
-                        
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeFile(file.id)}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+                    <div className="space-y-6 relative z-10">
+                      <div className={`
+                        w-24 h-24 mx-auto rounded-[28px] flex items-center justify-center transition-all duration-500
+                        ${isDragging ? 'bg-primary shadow-2xl shadow-primary/40 scale-110' : 'bg-secondary/50 group-hover:bg-secondary'}
+                      `}>
+                        <Upload className={`w-12 h-12 transition-colors duration-500 ${isDragging ? 'text-primary-foreground' : 'text-primary'}`} />
                       </div>
-                    ))}
+
+                      <div className="space-y-2">
+                        <p className="text-2xl font-black text-foreground tracking-tight">
+                          {isDragging ? 'Release to Scan' : 'Drop Footage Here'}
+                        </p>
+                        <p className="text-muted-foreground italic">
+                          Support for RAW, Thermal, and Visual streams
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-6 pt-4">
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                          <ImageIcon className="w-4 h-4 text-primary" />
+                          <span>Images</span>
+                        </div>
+                        <div className="w-1 h-1 rounded-full bg-white/10" />
+                        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                          <FileVideo className="w-4 h-4 text-accent" />
+                          <span>Video</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
-            )}
 
-            {/* Analysis Type Selection */}
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Analysis Type</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-3 gap-4">
+              {/* Uploaded Files - Premium List */}
+              {files.length > 0 && (
+                <Card className="glass-card border-white/5 animate-in fade-in slide-in-from-left-8 duration-700 delay-200">
+                  <CardHeader className="p-6 pb-2">
+                    <CardTitle className="text-xl font-bold flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Layers className="w-5 h-5 text-primary" />
+                        <span>Payload Queue</span>
+                      </div>
+                      <Badge className="bg-primary/10 text-primary border-primary/20">{files.length} Units</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid gap-3">
+                      {files.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-all group"
+                        >
+                          <div className={`
+                            w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:rotate-3
+                            ${file.type === 'video' ? 'bg-accent/10 border border-accent/20' : 'bg-primary/10 border border-primary/20'}
+                          `}>
+                            {file.type === 'video'
+                              ? <FileVideo className="w-6 h-6 text-accent" />
+                              : <ImageIcon className="w-6 h-6 text-primary" />
+                            }
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <p className="font-bold text-sm text-foreground truncate">{file.name}</p>
+                              <span className="text-[10px] font-black uppercase text-muted-foreground bg-white/5 px-2 py-0.5 rounded">{file.size}</span>
+                            </div>
+
+                            {file.status === 'uploading' && (
+                              <div className="space-y-2">
+                                <Progress value={file.progress} className="h-1.5 bg-white/5" />
+                                <p className="text-[10px] font-black uppercase text-primary animate-pulse tracking-widest">Encrypting... {Math.round(file.progress)}%</p>
+                              </div>
+                            )}
+
+                            {file.status === 'processing' && (
+                              <div className="flex items-center gap-2 text-[10px] font-black uppercase text-accent tracking-widest">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                <span>AI Synthesizing...</span>
+                              </div>
+                            )}
+
+                            {file.status === 'complete' && (
+                              <div className="flex items-center gap-2 text-[10px] font-black uppercase text-primary tracking-widest">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Ready for Analysis</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                            onClick={() => removeFile(file.id)}
+                          >
+                            <X className="w-5 h-5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Sidebar Controls */}
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-6 duration-700 delay-300">
+              {/* Analysis Type */}
+              <Card className="glass-card border-white/5 overflow-hidden">
+                <CardHeader className="p-6 pb-2">
+                  <CardTitle className="text-xl font-bold">Analysis Mode</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 grid gap-3">
                   {analysisTypes.map((type) => (
                     <button
                       key={type.id}
                       onClick={() => setSelectedAnalysis(type.id)}
                       className={`
-                        p-4 rounded-xl border-2 text-left transition-all
-                        ${selectedAnalysis === type.id 
-                          ? 'border-primary bg-primary/5' 
-                          : 'border-border hover:border-primary/50 bg-secondary/30'
+                        p-5 rounded-2xl border transition-all duration-300 text-left group
+                        ${selectedAnalysis === type.id
+                          ? 'border-primary/50 bg-primary/10 shadow-lg shadow-primary/5'
+                          : 'border-white/5 hover:border-white/20 bg-white/5'
                         }
                       `}
                     >
-                      <div className={`w-10 h-10 rounded-lg bg-secondary flex items-center justify-center mb-3`}>
-                        <type.icon className={`w-5 h-5 ${type.color}`} />
-                      </div>
-                      <p className="font-medium text-foreground">{type.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{type.description}</p>
-                      {selectedAnalysis === type.id && (
-                        <div className="mt-3">
-                          <Badge className="bg-primary/20 text-primary border-0">Selected</Badge>
+                      <div className="flex items-start gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all group-hover:scale-110 ${
+                          selectedAnalysis === type.id ? 'bg-primary/20' : 'bg-background/50'
+                        }`}>
+                          <type.icon className={`w-6 h-6 ${type.color} ${selectedAnalysis === type.id ? 'animate-pulse' : ''}`} />
                         </div>
-                      )}
+                        <div className="flex-1">
+                          <p className="font-bold text-foreground text-sm tracking-tight">{type.title}</p>
+                          <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest leading-none mt-1.5 opacity-60">{type.description}</p>
+                        </div>
+                      </div>
                     </button>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Start Analysis Button */}
-            <Card className="bg-card border-border">
-              <CardContent className="p-6">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <Sparkles className="w-6 h-6 text-primary" />
+              {/* Action Center */}
+              <Card className="glass-card border-primary/20 bg-primary/5 overflow-hidden">
+                <CardContent className="p-8 space-y-8 text-center">
+                  <div className="space-y-4">
+                    <div className="w-20 h-20 mx-auto rounded-[32px] bg-primary/10 flex items-center justify-center border border-primary/20">
+                      <Sparkles className="w-10 h-10 text-primary animate-pulse" />
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">AI-Powered Analysis</p>
-                      <p className="text-sm text-muted-foreground">
-                        {allFilesComplete 
-                          ? `${files.length} files ready for analysis`
-                          : 'Upload files to begin analysis'
+                    <div className="space-y-1">
+                      <p className="font-black text-xl tracking-tight">AI Synthesis</p>
+                      <p className="text-sm text-muted-foreground italic">
+                        {allFilesComplete
+                          ? `Ready to process ${files.length} streams`
+                          : 'Awaiting data streams...'
                         }
                       </p>
                     </div>
                   </div>
-                  
-                  <Button 
+
+                  <Button
                     size="lg"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 min-w-[200px]"
+                    className="w-full h-16 rounded-[24px] bg-primary text-primary-foreground hover:bg-primary/90 text-lg font-black shadow-2xl shadow-primary/20 transition-all hover:scale-[1.03] active:scale-[0.98] disabled:opacity-40"
                     disabled={!allFilesComplete || isAnalyzing}
                     onClick={handleStartAnalysis}
                   >
                     {isAnalyzing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Analyzing...
-                      </>
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        <span>PROCESSING...</span>
+                      </div>
                     ) : (
-                      <>
-                        Start Analysis
-                        <ArrowRight className="w-4 h-4" />
-                      </>
+                      <div className="flex items-center gap-3">
+                        <span>INITIATE SCAN</span>
+                        <ArrowRight className="w-6 h-6" />
+                      </div>
                     )}
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
 
-            {/* Tips Section */}
-            <div className="grid md:grid-cols-3 gap-4">
-              {[
-                {
-                  title: "High Resolution",
-                  description: "Use 4K images for best defect detection accuracy"
-                },
-                {
-                  title: "Overlap Coverage",
-                  description: "Ensure 60-70% overlap between adjacent images"
-                },
-                {
-                  title: "Optimal Timing",
-                  description: "Capture during peak sunlight for thermal analysis"
-                }
-              ].map((tip) => (
-                <div key={tip.title} className="p-4 rounded-xl bg-secondary/30 border border-border">
-                  <p className="font-medium text-sm text-foreground">{tip.title}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{tip.description}</p>
+                  <div className="pt-4 grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="h-1 rounded-full bg-primary/10 overflow-hidden">
+                        {isAnalyzing && (
+                          <div 
+                            className="h-full bg-primary animate-progress-fast" 
+                            style={{ animationDelay: `${i * 0.2}s` }}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Best Practices Tips */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-[3px] text-muted-foreground ml-2">Operation Protocol</p>
+                <div className="grid gap-3">
+                  {[
+                    { label: "RESOLUTION", value: "4K Min Rec.", icon: Camera },
+                    { label: "OVERLAP", value: "70% Lateral", icon: Layers },
+                    { label: "TIMING", value: "Peak Noon", icon: Thermometer }
+                  ].map((tip) => (
+                    <div key={tip.label} className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 group hover:border-white/10 transition-all">
+                      <div className="flex items-center gap-3">
+                        <tip.icon className="w-4 h-4 text-primary opacity-50" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{tip.label}</span>
+                      </div>
+                      <span className="text-[10px] font-black text-foreground italic">{tip.value}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         </div>
@@ -393,3 +452,4 @@ export default function UploadPage() {
     </div>
   )
 }
+

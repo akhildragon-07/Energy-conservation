@@ -6,8 +6,10 @@ import { cn } from "@/lib/utils"
 export function DroneAnimation({ className }: { className?: string }) {
   const [position, setPosition] = useState({ x: 50, y: 50 })
   const [rotation, setRotation] = useState(0)
+  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
+    setIsMounted(true)
     const interval = setInterval(() => {
       setPosition(prev => ({
         x: 50 + Math.sin(Date.now() / 2000) * 15,
@@ -18,6 +20,10 @@ export function DroneAnimation({ className }: { className?: string }) {
 
     return () => clearInterval(interval)
   }, [])
+
+  if (!isMounted) {
+    return <div className={cn("relative w-full h-full", className)} />;
+  }
 
   return (
     <div className={cn("relative w-full h-full", className)}>
